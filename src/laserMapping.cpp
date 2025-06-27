@@ -62,6 +62,7 @@
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -73,7 +74,7 @@ double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_ti
 double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int    kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
-bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true, use_predifined_map = false;
 /**************************/
 
 float res_last[100000] = {0.0};
@@ -85,7 +86,7 @@ mutex mtx_buffer;
 condition_variable sig_buffer;
 
 string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic;
+string map_file_path, load_map_file_path, lid_topic, imu_topic;
 
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
@@ -612,6 +613,15 @@ void save_to_pcd()
     pcd_writer.writeBinary(map_file_path, *pcl_wait_pub);
 }
 
+PointCloudXYZI::Ptr pcl_load(new PointCloudXYZI());
+bool getInitialPose = false;
+void load_from_pcd()
+{    
+    pcl::PCDReader pcd_reader;
+    pcd_reader.read(load_map_file_path, *pcl_load);
+    
+}
+
 template<typename T>
 void set_posestamp(T & out)
 {
@@ -793,6 +803,37 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     solve_time += omp_get_wtime() - solve_start_;
 }
 
+SO3 eulerToSO3(double roll, double pitch, double yaw) {
+    Eigen::AngleAxisd rollAngle(roll, Eigen::Vector3d::UnitX());
+    Eigen::AngleAxisd pitchAngle(pitch, Eigen::Vector3d::UnitY());
+    Eigen::AngleAxisd yawAngle(yaw, Eigen::Vector3d::UnitZ());
+
+    Eigen::Quaterniond q = yawAngle * pitchAngle * rollAngle;
+
+    // Construct MTK::SO3 manually
+    return SO3(q.w(), q.x(), q.y(), q.z());  // MTK::SO3 expects (w, x, y, z)
+}
+
+std::vector<double> init_pose(6, 0.0);
+void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    const auto& pos = msg->pose.position;
+    const auto& ori = msg->pose.orientation;
+
+    // Convert quaternion to RPY (roll, pitch, yaw)
+    Eigen::Quaterniond q(ori.w, ori.x, ori.y, ori.z);
+    Eigen::Vector3d euler = q.toRotationMatrix().eulerAngles(0, 1, 2);  // Roll, Pitch, Yaw
+
+    // Update global init_pose vector
+    init_pose[0] = pos.x;
+    init_pose[1] = pos.y;
+    init_pose[2] = pos.z;
+    init_pose[3] = euler[0];  // roll
+    init_pose[4] = euler[1];  // pitch
+    init_pose[5] = euler[2];  // yaw
+
+    getInitialPose = true;
+}
+
 class LaserMappingNode : public rclcpp::Node
 {
 public:
@@ -806,6 +847,8 @@ public:
         this->declare_parameter<bool>("publish.scan_bodyframe_pub_en", true);
         this->declare_parameter<int>("max_iteration", 4);
         this->declare_parameter<string>("map_file_path", "");
+        this->declare_parameter<string>("load_map_file_path", "");
+        this->declare_parameter<bool>("use_predifined_map", false);
         this->declare_parameter<string>("common.lid_topic", "/livox/lidar");
         this->declare_parameter<string>("common.imu_topic", "/livox/imu");
         this->declare_parameter<bool>("common.time_sync_en", false);
@@ -841,7 +884,9 @@ public:
         this->get_parameter_or<bool>("publish.dense_publish_en", dense_pub_en, true);
         this->get_parameter_or<bool>("publish.scan_bodyframe_pub_en", scan_body_pub_en, true);
         this->get_parameter_or<int>("max_iteration", NUM_MAX_ITERATIONS, 4);
-        this->get_parameter_or<string>("map_file_path", map_file_path, "");
+        this->get_parameter_or<string>("map_file_path", map_file_path, ""); 
+        this->get_parameter_or<string>("load_map_file_path", load_map_file_path, "");  
+        this->get_parameter_or<bool>("use_predifined_map", use_predifined_map, false);
         this->get_parameter_or<string>("common.lid_topic", lid_topic, "/livox/lidar");
         this->get_parameter_or<string>("common.imu_topic", imu_topic,"/livox/imu");
         this->get_parameter_or<bool>("common.time_sync_en", time_sync_en, false);
@@ -903,6 +948,16 @@ public:
         fill(epsi, epsi+23, 0.001);
         kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
+        // load a predefined mapa
+        if (use_predifined_map){
+            load_from_pcd();
+            /*** initialize the predefined map kdtree ***/
+            if (use_predifined_map){
+                ikdtree.set_downsample_param(filter_size_map_min);
+                ikdtree.Build(pcl_load->points);
+            }
+        }
+
         /*** debug record ***/
         // FILE *fp;
         string pos_log_dir = root_dir + "/Log/pos_log.txt";
@@ -927,6 +982,7 @@ public:
             sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
         }
         sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 10, imu_cbk);
+        pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/initialpose", 10, poseCallback);
         pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 20);
         pubLaserCloudFull_body_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered_body", 20);
         pubLaserCloudEffect_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_effected", 20);
@@ -955,11 +1011,48 @@ public:
         fclose(fp);
     }
 
+    
+
 private:
     void timer_callback()
     {
         if(sync_packages(Measures))
         {
+            // predifined map initialization
+            if (use_predifined_map){
+                if (getInitialPose){
+                    // set initialpose
+                    vect3 position(init_pose.data()); // x,y,z
+                    double roll = init_pose[3];
+                    double pitch = init_pose[4];
+                    double yaw = init_pose[5];
+
+                    SO3 rotation = eulerToSO3(roll, pitch, yaw);
+
+                    // Build initial state
+                    state_ikfom init_state;
+                    init_state.pos = position;
+                    init_state.rot = rotation;
+                    init_state.vel = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+                    init_state.bg = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+                    init_state.ba = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+                    init_state.offset_R_L_I = SO3::Identity();
+                    init_state.offset_T_L_I = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+                    init_state.grav = S2();  // Default gravity vector
+
+                    // Initialize covariance
+                    Eigen::Matrix<double, 23, 23> init_cov = Eigen::Matrix<double, 23, 23>::Identity() * 1e-3;
+
+                    // Set initial state and covariance
+                    kf.change_x(init_state);
+                    kf.change_P(init_cov);
+                }else{
+                    // wait for the initialpose
+                    return;
+                }
+                
+            }
+
             if (flg_first_scan)
             {
                 first_lidar_time = Measures.lidar_beg_time;
@@ -1138,6 +1231,7 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_pcl_livox_;
 

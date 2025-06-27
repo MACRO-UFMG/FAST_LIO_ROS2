@@ -8,6 +8,8 @@
         cube_side_length: 1000.0
         runtime_pos_log_enable: false
         map_file_path: "./test.pcd"
+        load_map_file_path: "./test.pcd"
+        use_predifined_map: false
 
         common:
             lid_topic:  "/livox/lidar_CustomMsg"
