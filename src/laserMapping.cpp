@@ -1046,6 +1046,8 @@ private:
                     // Set initial state and covariance
                     kf.change_x(init_state);
                     kf.change_P(init_cov);
+
+                    getInitialPose = false;
                 }else{
                     // wait for the initialpose
                     return;
