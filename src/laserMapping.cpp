@@ -1019,45 +1019,46 @@ private:
     {
         if(sync_packages(Measures))
         {
+            // TODO
             // predifined map initialization
-            if (use_predifined_map){
-                RCLCPP_INFO(this->get_logger(), "Predefined map loaded");
-                if (getInitialPose){
-                    RCLCPP_INFO(this->get_logger(), "Initial pose received");
-                    // set initialpose
-                    vect3 position(init_pose.data()); // x,y,z
-                    double roll = init_pose[3];
-                    double pitch = init_pose[4];
-                    double yaw = init_pose[5];
+            // if (use_predifined_map){
+            //     RCLCPP_INFO(this->get_logger(), "Predefined map loaded");
+            //     if (getInitialPose){
+            //         RCLCPP_INFO(this->get_logger(), "Initial pose received");
+            //         // set initialpose
+            //         vect3 position(init_pose.data()); // x,y,z
+            //         double roll = init_pose[3];
+            //         double pitch = init_pose[4];
+            //         double yaw = init_pose[5];
 
-                    SO3 rotation = eulerToSO3(roll, pitch, yaw);
+            //         SO3 rotation = eulerToSO3(roll, pitch, yaw);
 
-                    // Build initial state
-                    state_ikfom init_state;
-                    init_state.pos = position;
-                    init_state.rot = rotation;
-                    init_state.vel = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
-                    init_state.bg = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
-                    init_state.ba = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
-                    init_state.offset_R_L_I = SO3::Identity();
-                    init_state.offset_T_L_I = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
-                    init_state.grav = S2();  // Default gravity vector
+            //         // Build initial state
+            //         state_ikfom init_state;
+            //         init_state.pos = position;
+            //         init_state.rot = rotation;
+            //         init_state.vel = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+            //         init_state.bg = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+            //         init_state.ba = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+            //         init_state.offset_R_L_I = SO3::Identity();
+            //         init_state.offset_T_L_I = vect3(Eigen::Vector3d(0.0, 0.0, 0.0));
+            //         init_state.grav = S2();  // Default gravity vector
 
-                    // Initialize covariance
-                    Eigen::Matrix<double, 23, 23> init_cov = Eigen::Matrix<double, 23, 23>::Identity() * 1e-3;
+            //         // Initialize covariance
+            //         Eigen::Matrix<double, 23, 23> init_cov = Eigen::Matrix<double, 23, 23>::Identity() * 1e-3;
 
-                    // Set initial state and covariance
-                    kf.change_x(init_state);
-                    kf.change_P(init_cov);
+            //         // Set initial state and covariance
+            //         kf.change_x(init_state);
+            //         kf.change_P(init_cov);
 
-                    getInitialPose = false;
-                }else{
-                    RCLCPP_INFO(this->get_logger(), "Waiting for initial pose");
-                    // wait for the initialpose
-                    return;
-                }
+            //         getInitialPose = false;
+            //     }else{
+            //         RCLCPP_INFO(this->get_logger(), "Waiting for initial pose");
+            //         // wait for the initialpose
+            //         return;
+            //     }
                 
-            }
+            // }
 
             if (flg_first_scan)
             {
