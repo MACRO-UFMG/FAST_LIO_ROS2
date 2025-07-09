@@ -955,6 +955,8 @@ public:
             ikdtree.set_downsample_param(filter_size_map_min);
             ikdtree.Build(pcl_load->points);
             RCLCPP_INFO(this->get_logger(), "Predefined map loaded and kdtree built with %d points", pcl_load->points.size());
+        } else {
+            RCLCPP_INFO(this->get_logger(), "No predefined map loaded");
         }
 
         /*** debug record ***/
@@ -1019,7 +1021,9 @@ private:
         {
             // predifined map initialization
             if (use_predifined_map){
+                RCLCPP_INFO(this->get_logger(), "Predefined map loaded");
                 if (getInitialPose){
+                    RCLCPP_INFO(this->get_logger(), "Initial pose received");
                     // set initialpose
                     vect3 position(init_pose.data()); // x,y,z
                     double roll = init_pose[3];
@@ -1048,6 +1052,7 @@ private:
 
                     getInitialPose = false;
                 }else{
+                    RCLCPP_INFO(this->get_logger(), "Waiting for initial pose");
                     // wait for the initialpose
                     return;
                 }
