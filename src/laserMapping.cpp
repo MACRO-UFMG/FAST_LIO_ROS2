@@ -37,6 +37,7 @@
 #include <math.h>
 #include <thread>
 #include <fstream>
+#include <iostream>
 #include <csignal>
 #include <chrono>
 #include <unistd.h>
@@ -619,7 +620,7 @@ void load_from_pcd()
 {    
     pcl::PCDReader pcd_reader;
     pcd_reader.read(load_map_file_path, *pcl_load);
-    
+    std::cout << "Loaded predefined map with " << pcl_load->points.size() << " points from " << load_map_file_path << std::endl;
 }
 
 template<typename T>
