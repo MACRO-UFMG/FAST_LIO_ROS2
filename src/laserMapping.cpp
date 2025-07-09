@@ -952,10 +952,9 @@ public:
         if (use_predifined_map){
             load_from_pcd();
             /*** initialize the predefined map kdtree ***/
-            if (use_predifined_map){
-                ikdtree.set_downsample_param(filter_size_map_min);
-                ikdtree.Build(pcl_load->points);
-            }
+            ikdtree.set_downsample_param(filter_size_map_min);
+            ikdtree.Build(pcl_load->points);
+            RCLCPP_INFO(this->get_logger(), "Predefined map loaded and kdtree built with %d points", pcl_load->points.size());
         }
 
         /*** debug record ***/
