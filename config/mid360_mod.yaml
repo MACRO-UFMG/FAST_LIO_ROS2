@@ -12,7 +12,7 @@
         use_predifined_map: false
 
         common:
-            lid_topic:  "/livox/lidar_CustomMsg"
+            lid_topic:  "/livox/lidar"
             imu_topic:  "/livox/imu"
             time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
             time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
