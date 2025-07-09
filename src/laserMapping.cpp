@@ -951,7 +951,7 @@ public:
 
         // load a predefined mapa
         if (use_predifined_map){
-            RCLCPP_INFO(this->get_logger(), "Loading predefined map from %s", load_map_file_path.c_str());
+            //RCLCPP_INFO(this->get_logger(), "Loading predefined map from %s", load_map_file_path.c_str());
             load_from_pcd();
             /*** initialize the predefined map kdtree ***/
             ikdtree.set_downsample_param(filter_size_map_min);
