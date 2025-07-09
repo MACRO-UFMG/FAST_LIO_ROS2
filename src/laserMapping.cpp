@@ -617,6 +617,7 @@ PointCloudXYZI::Ptr pcl_load(new PointCloudXYZI());
 bool getInitialPose = false;
 void load_from_pcd()
 {    
+    RCLCPP_INFO(this->get_logger(), "Loading predefined map from %s", load_map_file_path.c_str());
     pcl::PCDReader pcd_reader;
     pcd_reader.read(load_map_file_path, *pcl_load);
     
