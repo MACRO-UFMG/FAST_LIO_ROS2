@@ -1,0 +1,96 @@
+/**:
+    ros__parameters:
+        # =============================================================================
+        # FAST-LIO2 Espeleo final config from calibration_and_tuning_pipeline
+        # Generated: 2026-07-27
+        #
+        # Transform convention (FAST-LIO):
+        #   p_I = R_IL * p_L + t_IL
+        # Body-frame IMU topic: /camera/camera/imu_body  (camera_imu_body_frame)
+        # Optical→body: x_b=z_o, y_b=-x_o, z_b=-y_o
+        #
+        # Time-offset sign convention (FAST-LIO code):
+        #   adjusted_imu_stamp = raw_imu_stamp - time_offset_lidar_to_imu
+        #
+        # Required launch assumptions:
+        #   - Velodyne: timestamp_first_packet: true  (point times ~[0, 0.1] s)
+        #   - RealSense unified IMU ~200 Hz, SensorData QoS
+        #   - FAST-LIO IMU subscription: SensorDataQoS().keep_last(200)  [PRESERVE]
+        #   - For body IMU: run imu_frame_adapter OR use deterministic body bags
+        # =============================================================================
+
+        feature_extract_enable: false
+
+        # MAPPING (Stage H): provisional — prefer simplest under large replay variance.
+        # Measured: point_filter_num=2 had best single map-bag score, but baseline
+        # retained as simplest within huge baseline-repeat uncertainty.
+        point_filter_num: 1          # provisional (OFAT; see mapping_tuning_summary.json)
+        max_iteration: 4             # provisional (baseline; OFAT vs 3 not clearly better)
+        filter_size_surf: 0.10       # provisional baseline voxel pair
+        filter_size_map: 0.15        # provisional baseline voxel pair
+        cube_side_length: 200.0
+
+        runtime_pos_log_enable: false
+        map_file_path: ""
+        load_map_file_path: ""
+        use_predifined_map: false
+
+        common:
+            lid_topic: "/velodyne_points"
+            # BODY-FRAME IMU (requires adapter or body bag)
+            imu_topic: "/camera/camera/imu_body"
+
+            time_sync_en: false
+
+            # CALIBRATED (Stage G median-rank, NOMINAL spatial frozen):
+            # Bags: calib_LI_GRIL_03_body, calib_LI_GRIL_out_body,
+            #       calib_LI_GRIL_straight_body, bag_teste_map_fastlio2
+            # Per-bag optima differed (~18 ms spread map/out/straight vs 03).
+            # Selected by median rank: -0.002 s. Treat as provisional if
+            # host timestamp variability is later confirmed.
+            time_offset_lidar_to_imu: -0.002
+
+        preprocess:
+            lidar_type: 2             # Velodyne
+            scan_line: 16
+            blind: 0.30
+            timestamp_unit: 0         # seconds — requires first-packet point times
+            scan_rate: 10
+
+        mapping:
+            # IMU covariances: PROVISIONAL defaults — production Allan/covariance
+            # tuning BLOCKED (no ≥10–30 min stationary IMU recording of Espeleo
+            # RealSense IMU found). Do not trust values from 5–25 s still segments.
+            acc_cov: 0.1
+            gyr_cov: 0.1
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+
+            fov_degree: 180.0
+            det_range: 60.0           # provisional (100 m OFAT run diverged)
+
+            extrinsic_est_en: false
+
+            # SPATIAL: NOMINAL_BODY (GRIL/LI-Init blocked — see remaining_blockers.md)
+            # Mechanical/prior body-frame estimate; NOT newly calibrated from bags.
+            # Bag set that would have produced GRIL/LI candidates: calib_LI_GRIL_03/_out
+            # (unusable until re-recorded with timestamp_first_packet:true).
+            extrinsic_T: [-0.06898, 0.01022, 0.05760]
+
+            extrinsic_R: [
+                1.0, 0.0, 0.0,
+                0.0, 1.0, 0.0,
+                0.0, 0.0, 1.0
+            ]
+
+        publish:
+            path_en: false
+            effect_map_en: false
+            map_en: false
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: true
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1

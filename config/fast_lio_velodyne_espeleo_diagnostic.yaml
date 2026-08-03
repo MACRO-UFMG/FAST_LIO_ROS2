@@ -1,0 +1,110 @@
+/**:
+    ros__parameters:
+        # FAST-LIO2 diagnostic baseline:
+        # Velodyne VLP-16 + Intel RealSense D456 IMU
+        #
+        # Goals:
+        #   1. Freeze the current LiDAR-to-IMU extrinsics.
+        #   2. Preserve more VLP-16 points for indoor/corridor geometry.
+        #   3. Reduce map/publishing load while diagnosing divergence.
+        #   4. Leave timing offset at zero until it is measured.
+        #
+        # Keep the robot stationary for at least 2-3 seconds at startup.
+
+        feature_extract_enable: false
+
+        # VLP-16 is sparse: keep every point for the diagnostic run.
+        # Increase to 2 later only if CPU cannot sustain real time.
+        point_filter_num: 1
+
+        # More IEKF iterations can help scan-to-map convergence.
+        # Reduce to 4 later if CPU load is too high.
+        max_iteration: 5
+
+        # Finer indoor voxel sizes than the previous 0.3 / 0.2 values.
+        # These preserve wall, doorway, floor and corridor geometry.
+        filter_size_surf: 0.10
+        filter_size_map: 0.15
+
+        # Upstream default is 200 m. A 1000 m cube is unnecessary for
+        # room/corridor diagnostics and can increase map maintenance cost.
+        cube_side_length: 200.0
+
+        runtime_pos_log_enable: false
+
+        map_file_path: ""  # .pcd file
+        load_map_file_path: ""
+        use_predifined_map: false
+
+        common:
+            lid_topic: "/velodyne_points"
+            imu_topic: "/camera/camera/imu"
+
+            # Do not use FAST-LIO's simple software synchronizer while
+            # diagnosing. Prefer correct sensor timestamps / calibrated offset.
+            time_sync_en: false
+
+            # Measured on bag_teste_map_fastlio2 by SE2-aligned RPE sweep
+            # (−0.05…+0.05 s, 10 ms steps). Best translational RPE at −0.01 s.
+            # Code applies: adjusted_imu_stamp = raw_imu_stamp - this_value.
+            time_offset_lidar_to_imu: -0.01
+
+        preprocess:
+            lidar_type: 2
+            scan_line: 16
+
+            # Reduced from 0.5 m to preserve close indoor structure.
+            # Restore 0.5 if robot-body/self returns appear in the cloud.
+            blind: 0.30
+
+            # 0 = seconds. This is correct only if the PointCloud2 `time`
+            # field is expressed in seconds relative to the cloud header.
+            # Verify the maximum point time is approximately 0.10 s at 10 Hz.
+            timestamp_unit: 0
+
+            scan_rate: 10
+
+        mapping:
+            # Keep upstream-style values for the first controlled test.
+            # Do not tune these before IMU calibration and timestamp validation.
+            acc_cov: 0.1
+            gyr_cov: 0.1
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+
+            # 180 is the meaningful upstream value for a spinning LiDAR.
+            # Upstream internally caps the effective value below 180 degrees.
+            fov_degree: 180.0
+
+            # Indoor diagnostic range. Reduces far sparse/noisy points and CPU.
+            det_range: 60.0
+
+            # Critical: freeze the supplied transform during diagnosis.
+            extrinsic_est_en: false
+
+            # Active transform copied unchanged from the user's current config.
+            # FAST-LIO expects the LiDAR pose expressed in the IMU/body frame.
+            extrinsic_T: [-0.01022, -0.05760, -0.06898]
+
+            extrinsic_R: [
+                 0.0, -1.0,  0.0,
+                 0.0,  0.0, -1.0,
+                 1.0,  0.0,  0.0
+            ]
+
+        publish:
+            path_en: true
+
+            # Disable full/effective map publishing during the diagnostic run
+            # to reduce CPU, serialization and network load.
+            effect_map_en: false
+            map_en: false
+
+            # Keep useful scan diagnostics, but publish the downsampled scan.
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: true
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1

@@ -1,0 +1,73 @@
+/**:
+  ros__parameters:
+    # =============================================================================
+    # PROVISIONAL robot config — latest_postfix_ablation (2026-07-28)
+    #
+    # Evidence-backed for Espeleo + Velodyne VLP-16 + RealSense D456 IMU.
+    # Selected from post-fix bag bag_teste_map_fastlio2 ablation.
+    #
+    # IMPORTANT caveats (do not remove):
+    # - Spatial extrinsics are NOMINAL/measured, NOT dynamically calibrated
+    #   (GRIL-Calib / LI-Init not run in this task; prior calib bags are pre-fix).
+    # - time_offset_lidar_to_imu is PROVISIONAL / bag-specific. Conservative
+    #   choice is 0.0 until confirmed on additional independent post-fix bags.
+    #   E06 (−0.020 s) was stable on this bag but remains TIME_OFFSET_PROVISIONAL.
+    # - IMU covariances remain upstream defaults (no Allan / long-still tuning).
+    # - Velodyne driver MUST use timestamp_first_packet: true so point times
+    #   span approximately [0, 0.1] s (post-fix contract).
+    # - FAST-LIO MUST keep SensorDataQoS().keep_last(200) IMU subscription.
+    # - Body IMU topic requires the C++ imu_frame_adapter at runtime.
+    # - Final calibration still requires new post-fix recordings.
+    # =============================================================================
+
+    feature_extract_enable: false
+    point_filter_num: 2          # E09 best vertical stability on this bag; provisional
+    max_iteration: 4
+    filter_size_surf: 0.10
+    filter_size_map: 0.15
+    cube_side_length: 200.0
+    runtime_pos_log_enable: false
+    map_file_path: ""
+    load_map_file_path: ""
+    use_predifined_map: false
+
+    common:
+      lid_topic: "/velodyne_points"
+      imu_topic: "/camera/camera/imu_body"   # requires imu_frame_adapter
+      time_sync_en: false
+      time_offset_lidar_to_imu: 0.0          # conservative; TIME_OFFSET_PROVISIONAL
+
+    preprocess:
+      lidar_type: 2
+      scan_line: 16
+      blind: 0.30
+      timestamp_unit: 0
+      scan_rate: 10
+
+    mapping:
+      acc_cov: 0.1
+      gyr_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      fov_degree: 180.0
+      det_range: 60.0
+      extrinsic_est_en: false
+      # NOMINAL_BODY: p_I = R_IL * p_L + t_IL  (identity R in body IMU frame)
+      extrinsic_T: [-0.06898, 0.01022, 0.05760]
+      extrinsic_R: [
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0
+      ]
+
+    publish:
+      path_en: false
+      effect_map_en: false
+      map_en: false
+      scan_publish_en: true
+      dense_publish_en: false
+      scan_bodyframe_pub_en: true
+
+    pcd_save:
+      pcd_save_en: false
+      interval: -1

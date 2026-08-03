@@ -5,6 +5,11 @@
 #include <thread>
 #include <fstream>
 #include <csignal>
+#include <cstdlib>
+#include <cstdio>
+#include <sstream>
+#include <iomanip>
+#include <vector>
 #include <so3_math.h>
 #include <Eigen/Eigen>
 #include <common_lib.h>
@@ -24,6 +29,135 @@
 /// *************Preconfiguration
 
 #define MAX_INI_COUNT (10)
+
+/* === BEGIN FAST_LIO_INIT_DIAG (instrumentation only; no estimator math changes) === */
+struct InitDiagSample {
+  double stamp_s = 0.0;
+  int sample_count = 0;
+  double mean_acc_x = 0.0, mean_acc_y = 0.0, mean_acc_z = 0.0;
+  double mean_gyr_x = 0.0, mean_gyr_y = 0.0, mean_gyr_z = 0.0;
+  double mean_acc_norm = 0.0;
+  double grav_x = 0.0, grav_y = 0.0, grav_z = 0.0;
+  double bg_x = 0.0, bg_y = 0.0, bg_z = 0.0;
+};
+
+struct InitDiagState {
+  bool enabled = false;
+  bool completed = false;
+  bool first_lidar_logged = false;
+  double first_imu_stamp_s = -1.0;
+  double init_start_stamp_s = -1.0;
+  double init_complete_stamp_s = -1.0;
+  double first_lidar_after_init_s = -1.0;
+  double bag_relative_init_complete_s = -1.0;
+  int imu_samples_used = 0;
+  V3D final_grav = Zero3d;
+  V3D final_bg = Zero3d;
+  V3D final_ba = Zero3d;
+  V3D final_mean_acc = Zero3d;
+  V3D final_mean_gyr = Zero3d;
+  double final_mean_acc_norm = 0.0;
+  std::vector<InitDiagSample> convergence;
+};
+
+static InitDiagState g_init_diag;
+
+static void init_diag_refresh_enabled()
+{
+  const char *path = std::getenv("FAST_LIO_INIT_DIAG_PATH");
+  g_init_diag.enabled = (path != nullptr && path[0] != '\0');
+}
+
+static void init_diag_note_imu_stamp(double stamp_s)
+{
+  if (!g_init_diag.enabled) return;
+  if (g_init_diag.first_imu_stamp_s < 0.0) {
+    g_init_diag.first_imu_stamp_s = stamp_s;
+  }
+}
+
+static void init_diag_record_step(
+    double stamp_s, int sample_count, const V3D &mean_acc, const V3D &mean_gyr,
+    const state_ikfom &imu_state)
+{
+  if (!g_init_diag.enabled) return;
+  InitDiagSample s;
+  s.stamp_s = stamp_s;
+  s.sample_count = sample_count;
+  s.mean_acc_x = mean_acc(0); s.mean_acc_y = mean_acc(1); s.mean_acc_z = mean_acc(2);
+  s.mean_gyr_x = mean_gyr(0); s.mean_gyr_y = mean_gyr(1); s.mean_gyr_z = mean_gyr(2);
+  s.mean_acc_norm = mean_acc.norm();
+  s.grav_x = imu_state.grav[0]; s.grav_y = imu_state.grav[1]; s.grav_z = imu_state.grav[2];
+  s.bg_x = imu_state.bg[0]; s.bg_y = imu_state.bg[1]; s.bg_z = imu_state.bg[2];
+  g_init_diag.convergence.push_back(s);
+}
+
+static void init_diag_write_json()
+{
+  const char *path = std::getenv("FAST_LIO_INIT_DIAG_PATH");
+  if (!path || path[0] == '\0') return;
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(9);
+  oss << "{\n"
+      << "  \"first_imu_stamp_s\": " << g_init_diag.first_imu_stamp_s << ",\n"
+      << "  \"init_start_stamp_s\": " << g_init_diag.init_start_stamp_s << ",\n"
+      << "  \"init_complete_stamp_s\": " << g_init_diag.init_complete_stamp_s << ",\n"
+      << "  \"first_lidar_after_init_s\": " << g_init_diag.first_lidar_after_init_s << ",\n"
+      << "  \"imu_samples_used\": " << g_init_diag.imu_samples_used << ",\n"
+      << "  \"max_ini_count\": " << MAX_INI_COUNT << ",\n"
+      << "  \"final_mean_acc\": [" << g_init_diag.final_mean_acc(0) << ", "
+      << g_init_diag.final_mean_acc(1) << ", " << g_init_diag.final_mean_acc(2) << "],\n"
+      << "  \"final_mean_gyr\": [" << g_init_diag.final_mean_gyr(0) << ", "
+      << g_init_diag.final_mean_gyr(1) << ", " << g_init_diag.final_mean_gyr(2) << "],\n"
+      << "  \"final_mean_acc_norm\": " << g_init_diag.final_mean_acc_norm << ",\n"
+      << "  \"final_gravity\": [" << g_init_diag.final_grav(0) << ", "
+      << g_init_diag.final_grav(1) << ", " << g_init_diag.final_grav(2) << "],\n"
+      << "  \"final_gyro_bias\": [" << g_init_diag.final_bg(0) << ", "
+      << g_init_diag.final_bg(1) << ", " << g_init_diag.final_bg(2) << "],\n"
+      << "  \"final_accel_bias\": [" << g_init_diag.final_ba(0) << ", "
+      << g_init_diag.final_ba(1) << ", " << g_init_diag.final_ba(2) << "],\n"
+      << "  \"accel_bias_initialized\": false,\n"
+      << "  \"convergence\": [\n";
+  for (size_t i = 0; i < g_init_diag.convergence.size(); ++i) {
+    const auto &c = g_init_diag.convergence[i];
+    oss << "    {\"stamp_s\": " << c.stamp_s
+        << ", \"sample_count\": " << c.sample_count
+        << ", \"mean_acc\": [" << c.mean_acc_x << ", " << c.mean_acc_y << ", " << c.mean_acc_z << "]"
+        << ", \"mean_gyr\": [" << c.mean_gyr_x << ", " << c.mean_gyr_y << ", " << c.mean_gyr_z << "]"
+        << ", \"mean_acc_norm\": " << c.mean_acc_norm
+        << ", \"gravity\": [" << c.grav_x << ", " << c.grav_y << ", " << c.grav_z << "]"
+        << ", \"gyro_bias\": [" << c.bg_x << ", " << c.bg_y << ", " << c.bg_z << "]}";
+    if (i + 1 < g_init_diag.convergence.size()) oss << ",";
+    oss << "\n";
+  }
+  oss << "  ]\n}\n";
+  std::string tmp = std::string(path) + ".tmp";
+  {
+    std::ofstream ofs(tmp.c_str(), std::ios::out | std::ios::trunc);
+    if (ofs) ofs << oss.str();
+  }
+  std::rename(tmp.c_str(), path);
+}
+
+static void init_diag_print_summary()
+{
+  if (!g_init_diag.enabled || !g_init_diag.completed) return;
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(9);
+  oss << "\n========== FAST_LIO_INIT_DIAG_SUMMARY ==========\n"
+      << "first_imu_stamp_s: " << g_init_diag.first_imu_stamp_s << "\n"
+      << "init_start_stamp_s: " << g_init_diag.init_start_stamp_s << "\n"
+      << "init_complete_stamp_s: " << g_init_diag.init_complete_stamp_s << "\n"
+      << "first_lidar_after_init_s: " << g_init_diag.first_lidar_after_init_s << "\n"
+      << "imu_samples_used: " << g_init_diag.imu_samples_used << "\n"
+      << "final_gravity: " << g_init_diag.final_grav.transpose() << "\n"
+      << "final_gyro_bias: " << g_init_diag.final_bg.transpose() << "\n"
+      << "final_accel_bias: " << g_init_diag.final_ba.transpose() << "\n"
+      << "final_mean_acc_norm: " << g_init_diag.final_mean_acc_norm << "\n"
+      << "================================================\n";
+  std::cerr << oss.str() << std::flush;
+}
+/* === END FAST_LIO_INIT_DIAG === */
 
 const bool time_list(PointType &x, PointType &y) {return (x.curvature < y.curvature);};
 
@@ -85,6 +219,7 @@ ImuProcess::ImuProcess()
     : b_first_frame_(true), imu_need_init_(true), start_timestamp_(-1)
 {
   init_iter_num = 1;
+  init_diag_refresh_enabled();
   Q = process_noise_cov();
   cov_acc       = V3D(0.1, 0.1, 0.1);
   cov_gyr       = V3D(0.1, 0.1, 0.1);
@@ -98,7 +233,10 @@ ImuProcess::ImuProcess()
   last_imu_.reset(new sensor_msgs::msg::Imu());
 }
 
-ImuProcess::~ImuProcess() {}
+ImuProcess::~ImuProcess() {
+  init_diag_write_json();
+  init_diag_print_summary();
+}
 
 void ImuProcess::Reset() 
 {
@@ -170,6 +308,9 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
     mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
     mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
     first_lidar_time = meas.lidar_beg_time;
+    if (g_init_diag.enabled) {
+      g_init_diag.init_start_stamp_s = rclcpp::Time(meas.imu.front()->header.stamp).seconds();
+    }
   }
 
   for (const auto &imu : meas.imu)
@@ -178,6 +319,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
     const auto &gyr_acc = imu->angular_velocity;
     cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
     cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+    init_diag_note_imu_stamp(rclcpp::Time(imu->header.stamp).seconds());
 
     mean_acc      += (cur_acc - mean_acc) / N;
     mean_gyr      += (cur_gyr - mean_gyr) / N;
@@ -197,6 +339,9 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
   init_state.offset_T_L_I = Lidar_T_wrt_IMU;
   init_state.offset_R_L_I = Lidar_R_wrt_IMU;
   kf_state.change_x(init_state);
+  init_diag_record_step(
+      !meas.imu.empty() ? rclcpp::Time(meas.imu.back()->header.stamp).seconds() : first_lidar_time,
+      N - 1, mean_acc, mean_gyr, init_state);
 
   esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
   init_P.setIdentity();
@@ -362,12 +507,30 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
       cov_acc = cov_acc_scale;
       cov_gyr = cov_gyr_scale;
       std::cout << "IMU Initial Done" << std::endl;
+      if (g_init_diag.enabled) {
+        g_init_diag.completed = true;
+        g_init_diag.imu_samples_used = init_iter_num;
+        g_init_diag.init_complete_stamp_s = rclcpp::Time(last_imu_->header.stamp).seconds();
+        g_init_diag.final_mean_acc = mean_acc;
+        g_init_diag.final_mean_gyr = mean_gyr;
+        g_init_diag.final_mean_acc_norm = mean_acc.norm();
+        g_init_diag.final_grav = V3D(imu_state.grav[0], imu_state.grav[1], imu_state.grav[2]);
+        g_init_diag.final_bg = imu_state.bg;
+        g_init_diag.final_ba = imu_state.ba;
+        init_diag_write_json();
+      }
       // ROS_INFO("IMU Initial Done: Gravity: %.4f %.4f %.4f %.4f; state.bias_g: %.4f %.4f %.4f; acc covarience: %.8f %.8f %.8f; gry covarience: %.8f %.8f %.8f",\
       //          imu_state.grav[0], imu_state.grav[1], imu_state.grav[2], mean_acc.norm(), cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
       fout_imu.open(DEBUG_FILE_DIR("imu.txt"),ios::out);
     }
 
     return;
+  }
+
+  if (g_init_diag.enabled && g_init_diag.completed && !g_init_diag.first_lidar_logged) {
+    g_init_diag.first_lidar_after_init_s = meas.lidar_beg_time;
+    g_init_diag.first_lidar_logged = true;
+    init_diag_write_json();
   }
 
   UndistortPcl(meas, kf_state, *cur_pcl_un_);

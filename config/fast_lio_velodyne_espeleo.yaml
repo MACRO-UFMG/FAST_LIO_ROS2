@@ -1,0 +1,62 @@
+/**:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 3
+        max_iteration: 3
+        filter_size_surf: 0.3
+        filter_size_map: 0.2
+        cube_side_length: 1000.0
+        runtime_pos_log_enable: false
+        map_file_path: "" # .pcd file
+        load_map_file_path: ""
+        use_predifined_map: false
+        common:
+            lid_topic:  "/velodyne_points"
+            imu_topic:  "/camera/camera/imu"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+        preprocess:
+            lidar_type: 2
+            scan_line:  16
+            blind: 0.5
+            timestamp_unit: 0
+            scan_rate: 10
+        mapping:
+            acc_cov: 0.1
+            gyr_cov: 0.1
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 100.0
+            extrinsic_est_en: true
+            # extrinsic_T: [ -0.101876330, 0.289978080, -0.287847540 ]
+            # extrinsic_R: [ 0.077783970, -0.996406000, -0.033553790,
+            #             -0.161998930,  0.020576370, -0.986575970,
+            #             0.983720710,  0.082175430, -0.159816770 ]
+            # extrinsic_T: [ -0.085, -0.02, 0.065 ]
+            # extrinsic_R: [ 1.,  0., 0.,
+            #             0.,  0.,  -1.,
+            #             0.,  1.,  0. ]
+            
+            extrinsic_T: [-0.01022, -0.05760, -0.06898]
+
+            extrinsic_R: [ 0.0, -1.0,  0.0,
+                        0.0,  0.0, -1.0,
+                        1.0,  0.0,  0.0 ]
+
+            # Scan/map axis alignment — do NOT use as extrinsic (odometry diverges).
+            # Applied as TF instead: odom->camera_init quaternion (Mode A / AMCL) or
+            # map->camera_init (Mode B). See safe_nav_stack.launch.py odom_cam_* args.
+            # extrinsic_R: [0.0, -1.0, 0.0,
+            #   1.0,  0.0, 0.0,
+            #   0.0,  0.0, 1.0]
+        publish:
+            path_en: true
+            effect_map_en: false
+            map_en: true
+            scan_publish_en:  true
+            dense_publish_en: true
+            scan_bodyframe_pub_en: true
+        pcd_save:
+            pcd_save_en: false
+            interval: -1
